@@ -1,6 +1,11 @@
-# wxa-template-base
-basic template for wxa developer
+# TodoMVC
 
-# Usage
-3. `npm i`
-4. `npm run dev`
+![](./page.png)
+
+🖖  参考 `vue-todomvc` 使用 [`wxa.js`](https://github.com/WeBankFinTech/wxa) 开发的TodoMVC。
+
+### 使用到的依赖 
+
+- `@wxa/core`
+- `@wxa/watch`
+

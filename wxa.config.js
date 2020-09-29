@@ -14,6 +14,9 @@ module.exports = {
             list: envlist,
         }),
     ],
+    optimization: {
+        transformPxToRpx: true,
+    },
 };
 
 if (prod) {

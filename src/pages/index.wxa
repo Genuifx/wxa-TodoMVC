@@ -1,95 +1,380 @@
 <script>
-import {Page} from '@wxa/core';
+import {Page, storage} from '@wxa/core';
+
+const STORAGE_KEY = "todos-wxa.js-2.0";
+let todoStorage = {
+    fetch: function() {
+        var todos = storage.get(STORAGE_KEY) || [];
+
+        todos.forEach(function(todo, index) {
+            todo.id = index;
+        });
+        todoStorage.uid = todos.length;
+        return todos;
+    },
+    save: function(todos) {
+        storage.set(STORAGE_KEY, todos)
+    }
+};
+
+// visibility filters
+let filters = {
+    all: function(todos) {
+        return todos;
+    },
+    active: function(todos) {
+        return todos.filter(function(todo) {
+            return !todo.completed;
+        });
+    },
+    completed: function(todos) {
+        return todos.filter(function(todo) {
+            return todo.completed;
+        });
+    }
+};
 
 @Page
 export default class Index {
-    async onLoad() {
-        console.log(this);
-        console.log(`hello ${this.$app.globalData.userInfo}, this is wxa page`);
-
-        let slogan = await this.foo();
-
-        console.log(slogan);
+    data = {
+        todos: todoStorage.fetch(),
+        newTodo: '',
+        editedTodo: false,
+        visibility: 'all'
     }
 
-    async foo() {
-        return await Promise.resolve('Hey, Async/Await is usabled');
+    addTodo() {
+        let newTodo = this.data.newTodo && this.data.newTodo.trim();
+
+        if (!newTodo) return;
+
+        this.setData({
+            todos: this.data.todos.concat([{
+                id: todoStorage.uid++,
+                title: newTodo,
+                completed: false,
+            }]),
+            newTodo: ''
+        });
+    }
+
+    removeTodo({currentTarget: {dataset: {todoIndex}}}) {
+        this.data.todos.splice(todoIndex, 1);
+        this.setData({ todos: this.data.todos });
+    }
+
+    editTodo({currentTarget: {dataset: {todoIndex}}}) {
+        this.beforeEditCache = this.data.todos[todoIndex].title;
+        this.editedTodo = this.data.todos[todoIndex];
+        this.setData({
+            editedTodoIndex: todoIndex
+        })
+    }
+
+    doneEdit({detail: {value}}) {
+        if (!this.editedTodo) {
+            return;
+        }
+        this.editedTodo.title = value.trim();
+
+        if (!this.editedTodo.title) {
+            this.removeTodo(this.data.editedTodoIndex);
+        } 
+            
+        this.setData({
+            todos: this.data.todos,
+            editedTodoIndex: -1
+        });
+        this.editedTodo = null;
+    }
+
+    cancelEdit(todo) {
+        this.editedTodo = null;
+        todo.title = this.beforeEditCache;
+    }
+
+    removeCompleted() {
+        this.todos = filters.active(this.todos);
+    }
+
+    toggle({currentTarget: {dataset: {todoIndex}}}) {
+        // console.log(todoIndex);
+        this.setData({
+            [`todos[${todoIndex}].completed`] : !this.data.todos[todoIndex].completed
+        });
+    }
+
+    watch = {
+        todos() {
+            todoStorage.save(this.data.todos);
+        }
+    }
+    
+    computed = {
+        filteredTodos: function() {
+            let todos = filters[this.data.visibility](this.data.todos);
+            console.log('filter todos', todos[0]);
+            // return JSON.parse(JSON.stringify(filters[this.data.visibility](this.data.todos)));
+            return todos;
+        },
+        remaining: function() {
+            return filters.active(this.data.todos).length;
+        },
+        // allDone: {
+        //     get: function() {
+        //       return this.remaining === 0;
+        //     },
+        //     set: function(value) {
+        //       this.todos.forEach(function(todo) {
+        //         todo.completed = value;
+        //       });
+        //     }
+        // }
     }
 }
 </script>
 
 <config>
 {
-    "navigationBarTitleText": "首页"
+    "navigationBarTitleText": "首页",
+    "navigationStyle": "custom"
 }
 </config>
 
 <template>
-<view class="page">
-    <view class="animated pulse">
-        hello, this is wxa!
+    <view class="todoapp">
+        <view class="header">
+            <view class="h1">Todos</view>
+            <input
+                class="new-todo"
+                auto
+                autocomplete="off"
+                placeholder="What needs to be done?"
+                model:value="{{newTodo}}"
+                bindconfirm="addTodo"
+                bindblur ="addTodo"
+            />
+        </view>
     </view>
-</view>
+    <view class="main" wx:if="{{todos.length}}">
+    <label for="toggle-all"></label>
+    <view class="todo-list">
+        <view
+            wx:for="{{filteredTodos}}"
+            wx:for-item="todo"
+            class="todo li {{ todo.completed ? 'completed' : ''}} {{ index == editedTodoIndex ? 'editing' : ''}}"
+            wx:key="id"
+        >
+            <view class="view">
+                <checkbox checked="{{todo.completed}}" class="toggle {{todo.completed ? 'checked' : ''}}" bindtap="toggle" data-todo-index="{{index}}"></checkbox>
+                <label bindtap="editTodo" data-todo-index="{{index}}">{{ todo.title }}</label>
+                <button class="destroy" bindtap="removeTodo" data-todo-index="{{index}}"></button>
+            </view>
+            <input
+                wx:if="{{index == editedTodoIndex}}" 
+                class="edit"
+                type="text"
+                value="{{todo.title}}"
+                bindblur="doneEdit"
+                bindconfirm="doneEdit"
+            />
+        </view>
+    </view>
+    </view>
 </template>
 
 <style lang="scss">
 .page {
     width: 100%;
     height: 100%;
-    display: flex;
-    flex-direction: row;
-    align-items: center;
-    justify-content: center;
 }
 
-.animated {
-  -webkit-animation-duration: 1s;
-  animation-duration: 1s;
-  -webkit-animation-fill-mode: both;
-  animation-fill-mode: both;
+view {
+    box-sizing: border-box;
 }
 
-.animated.infinite {
-  -webkit-animation-iteration-count: infinite;
-  animation-iteration-count: infinite;
+view.header {
+    width: 100%;
+    padding: 0 10px;
+
 }
 
-@-webkit-keyframes pulse {
-  from {
-    -webkit-transform: scale3d(1, 1, 1);
-    transform: scale3d(1, 1, 1);
-  }
-
-  50% {
-    -webkit-transform: scale3d(1.05, 1.05, 1.05);
-    transform: scale3d(1.05, 1.05, 1.05);
-  }
-
-  to {
-    -webkit-transform: scale3d(1, 1, 1);
-    transform: scale3d(1, 1, 1);
-  }
+.main {
+	position: relative;
+	z-index: 2;
 }
 
-@keyframes pulse {
-  from {
-    -webkit-transform: scale3d(1, 1, 1);
-    transform: scale3d(1, 1, 1);
-  }
-
-  50% {
-    -webkit-transform: scale3d(1.05, 1.05, 1.05);
-    transform: scale3d(1.05, 1.05, 1.05);
-  }
-
-  to {
-    -webkit-transform: scale3d(1, 1, 1);
-    transform: scale3d(1, 1, 1);
-  }
+.todoapp {
+    padding-top: 44px;
+	background: #fff;
+	position: relative;
 }
 
-.pulse {
-  -webkit-animation-name: pulse;
-  animation-name: pulse;
+.todoapp input::-webkit-input-placeholder {
+	font-style: italic;
+	font-weight: 300;
+	color: #e6e6e6;
+}
+
+.todoapp input::-moz-placeholder {
+	font-style: italic;
+	font-weight: 300;
+	color: #e6e6e6;
+}
+
+.todoapp input::input-placeholder {
+	font-style: italic;
+	font-weight: 300;
+	color: #e6e6e6;
+}
+
+.todoapp .h1 {
+	/* // position: absolute;
+	// top: -155px; */
+	width: 100%;
+	font-size: 100px;
+	font-weight: 100;
+	text-align: center;
+    color: darken(#1864af, 5%);
+	-webkit-text-rendering: optimizeLegibility;
+	-moz-text-rendering: optimizeLegibility;
+	text-rendering: optimizeLegibility;
+}
+
+.new-todo,
+.edit {
+    caret-color: #1864af;
+	position: relative;
+	margin: 0;
+	width: 100%;
+    height: 3em;
+	line-height: 3em;
+	font-size: 18px;
+	font-family: inherit;
+	font-weight: inherit;
+	border: 0;
+	color: inherit;
+	padding: 6px;
+	/* border: 1px solid #999; */
+	box-shadow: inset 0 -1px 5px 0 rgba(0, 0, 0, 0.2);
+	box-sizing: border-box;
+	-webkit-font-smoothing: antialiased;
+	-moz-osx-font-smoothing: grayscale;
+}
+
+.new-todo {
+    margin: 60px 0 20px;
+	border: none;
+	background: rgba(0, 0, 0, 0.003);
+    border-bottom: 2px solid darken(#1864af, 10%);
+    text-align: center;
+    box-shadow: none;
+}
+
+.todo-list {
+	margin: 0;
+	padding: 0;
+	list-style: none;
+}
+
+.todo-list .li {
+	position: relative;
+	font-size: 18px;
+	border-bottom: 1px solid #ededed;
+}
+
+.todo-list .li:last-child {
+	border-bottom: none;
+}
+
+.todo-list .li.editing {
+	border-bottom: none;
+	padding: 0;
+}
+
+.todo-list .li.editing .edit {
+	display: block;
+	width: calc(100% - 43px);
+	padding: 12px 16px;
+	margin: 0 0 0 43px;
+}
+
+.todo-list .li.editing .view {
+	display: none;
+}
+
+.todo-list .li .toggle {
+	text-align: center;
+	width: 40px;
+	/* auto, since non-WebKit browsers doesn't support input styling */
+	height: auto;
+	position: absolute;
+	top: 0;
+	bottom: 0;
+	margin: auto 0;
+	border: none; /* Mobile Safari */
+	-webkit-appearance: none;
+	appearance: none;
+}
+
+.todo-list .li .toggle {
+	opacity: 0;
+}
+
+.todo-list .li .toggle + label {
+	/*
+		Firefox requires `#` to be escaped - https://bugzilla.mozilla.org/show_bug.cgi?id=922433
+		IE and Edge requires *everything* to be escaped to render, so we do that instead of just the `#` - https://developer.microsoft.com/en-us/microsoft-edge/platform/issues/7157459/
+	*/
+	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23ededed%22%20stroke-width%3D%223%22/%3E%3C/svg%3E');
+	background-repeat: no-repeat;
+	background-position: center left;
+}
+
+.todo-list .li .toggle.checked + label {
+	background-image: url('data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20width%3D%2240%22%20height%3D%2240%22%20viewBox%3D%22-10%20-18%20100%20135%22%3E%3Ccircle%20cx%3D%2250%22%20cy%3D%2250%22%20r%3D%2250%22%20fill%3D%22none%22%20stroke%3D%22%23bddad5%22%20stroke-width%3D%223%22/%3E%3Cpath%20fill%3D%22%235dc2af%22%20d%3D%22M72%2025L42%2071%2027%2056l-4%204%2020%2020%2034-52z%22/%3E%3C/svg%3E');
+}
+
+.todo-list .li label {
+	word-break: break-all;
+	padding: 15px 15px 15px 60px;
+	display: block;
+	line-height: 1.2;
+	transition: color 0.4s;
+}
+
+.todo-list .li.completed label {
+	color: #d9d9d9;
+	text-decoration: line-through;
+}
+
+.todo-list .li .destroy {
+	display: block;
+	position: absolute;
+	top: 0;
+	right: 10px;
+	bottom: 0;
+	width: 40px;
+	height: 40px;
+	margin: auto 0;
+	font-size: 30px;
+	color: #cc9a9a;
+	margin-bottom: 11px;
+	transition: color 0.2s ease-out;
+}
+
+.todo-list .li .destroy:after {
+    border: none;
+    outline: none;
+	content: '×';
+	font-size: 30px;
+}
+
+/* .todo-list .li .edit {
+	display: none;
+} */
+
+.todo-list .li.editing:last-child {
+	margin-bottom: -1px;
 }
 </style>
